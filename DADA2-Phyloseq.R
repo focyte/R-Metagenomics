@@ -134,11 +134,6 @@ ps <- merge_phyloseq(ps, dna)
 taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
 ps
 
-# Identify and remove taxa with no NA values in their taxonomic classification
-# valid_taxa <- taxa_names(ps)[!apply(is.na(tax_table(ps)), 1, any)]
-# ps <- prune_taxa(valid_taxa, ps)
-# ps
-
 # Estimate richness
 alpha_div <- estimate_richness(ps, measures = c("Shannon", "Simpson"))
 
@@ -179,23 +174,23 @@ pdf(file="Ordination.pdf")
 plot_ordination(ps.prop, ord.nmds.bray, color="Sampletype", title="Bray NMDS")
 dev.off()
 
-# Normalize data to percentages for each sample
-ps.percent <- transform_sample_counts(ps, function(x) 100 * x / sum(x))
-write.csv(ps.percent@otu_table,"./percent_otu_table.csv", row.names = TRUE)
-
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-##                        Plotting of the data
+##    ██████╗ ██╗      ██████╗ ████████╗████████╗██╗███╗   ██╗ ██████╗ 
+##    ██╔══██╗██║     ██╔═══██╗╚══██╔══╝╚══██╔══╝██║████╗  ██║██╔════╝ 
+##    ██████╔╝██║     ██║   ██║   ██║      ██║   ██║██╔██╗ ██║██║  ███╗
+##    ██╔═══╝ ██║     ██║   ██║   ██║      ██║   ██║██║╚██╗██║██║   ██║
+##    ██║     ███████╗╚██████╔╝   ██║      ██║   ██║██║ ╚████║╚██████╔╝
+##    ╚═╝     ╚══════╝ ╚═════╝    ╚═╝      ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Select the top 20 sequences by the sum of taxa and normalize the counts
-
-
 top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
 ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
 
+# Draw bar plots based on each taxonomy level
 pdf(file="Subject_Phylum_Top20.pdf")
 plot_bar(ps.top20, x="Sample", fill="Phylum") + facet_wrap(~Sampletype, scales="free_x")
 dev.off()
@@ -207,7 +202,6 @@ dev.off()
 pdf(file="Subject_Genus_Top20.pdf")
 plot_bar(ps.top20, x="Sample", fill="Genus") + facet_wrap(~Sampletype, scales="free_x")
 dev.off()
-
 
 # Merge samples by Sampletype and set the factor levels
 mergedPs <- merge_samples(ps, "Sampletype")
@@ -225,7 +219,7 @@ sample_data(mergedPs_percent)$Sampletype <- factor(
 )
 write.csv(as.data.frame(otu_table(mergedPs_percent)), "./mergedOTU_percentages.csv", row.names = TRUE)
 
-
+# Draw bar plots based on each taxonomy level
 pdf(file = "Sampletype_Phylum_Compact.pdf")
 plot_bar(mergedPs_percent, x = "Sampletype", fill = "Phylum") +
   facet_wrap(~Sampletype, scales = "free_x") +
