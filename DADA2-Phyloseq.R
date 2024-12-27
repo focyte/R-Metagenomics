@@ -41,9 +41,10 @@ names(filtered.reads) <- sample.names
 out <- filterAndTrim(file.names, filtered.reads, 
                      rev = NULL,
                      filt.rev = NULL,
+                     minLen=400,
                      truncLen=400,
                      maxN=0, 
-                     maxEE= Inf, 
+                     maxEE=2, 
                      truncQ=2, 
                      rm.phix=TRUE,
                      compress=TRUE, 
@@ -57,7 +58,12 @@ plotErrors(error.rate, nominalQ=TRUE)
 dev.off()
 
 # Apply the core sample inference algorithm to the filtered and trimmed sequence data.
-dadaReads <- dada(filtered.reads, err=error.rate, multithread=TRUE)
+# Extra steps added to account for 454 pyrosequencing technology used
+dadaReads <- dada(filtered.reads, 
+                  err=error.rate, 
+                  multithread=TRUE, 
+                  HOMOPOLYMER_GAP_PENALTY=-1, 
+                  BAND_SIZE=32) # Accounts for high number of indels in 454 sequencing
 dadaReads[[1]]
 
 # Construct an amplicon sequence variant table (ASV) table 
@@ -111,11 +117,8 @@ sampletype <- sapply(strsplit(samples.out, "_"), `[`, 1)
 
 # Create the data frame
 samdf <- data.frame(Subject=subject, Sampletype=sampletype)
-
-# Assign "When" column
-samdf$When <- "Unknown" 
-samdf$When[samdf$Sampletype == "P"] <- "Plaque"
-samdf$When[samdf$Sampletype == "S"] <- "Saliva"
+samdf$Sampletype[samdf$Sampletype == "P"] <- "Plaque"
+samdf$Sampletype[samdf$Sampletype == "S"] <- "Saliva"
 
 # Set rownames to match the original sample names
 rownames(samdf) <- samples.out
@@ -124,7 +127,6 @@ rownames(samdf) <- samples.out
 ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
                sample_data(samdf), 
                tax_table(taxa))
-ps <- prune_samples(sample_names(ps) != "Mock", ps) # Remove mock sample
 
 dna <- Biostrings::DNAStringSet(taxa_names(ps))
 names(dna) <- taxa_names(ps)
@@ -133,9 +135,9 @@ taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
 ps
 
 # Identify and remove taxa with no NA values in their taxonomic classification
-valid_taxa <- taxa_names(ps)[!apply(is.na(tax_table(ps)), 1, any)]
-ps <- prune_taxa(valid_taxa, ps)
-ps
+# valid_taxa <- taxa_names(ps)[!apply(is.na(tax_table(ps)), 1, any)]
+# ps <- prune_taxa(valid_taxa, ps)
+# ps
 
 # Estimate richness
 alpha_div <- estimate_richness(ps, measures = c("Shannon", "Simpson"))
@@ -183,82 +185,75 @@ write.csv(ps.percent@otu_table,"./percent_otu_table.csv", row.names = TRUE)
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-##           Functions to apply to the phyloseq results during 
-
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Function to aggregate data by Sampletype and calculate percentages
-aggregate_by_Sampletype <- function(ps, tax_level) {
-  ps.melt <- psmelt(ps)
-  ps.grouped <- ps.melt %>%
-    group_by(Sampletype, !!sym(tax_level)) %>%
-    summarise(Abundance = sum(Abundance)) %>%
-    mutate(Percentage = 100 * Abundance / sum(Abundance))
-  return(ps.grouped)
-}
-
-# Function to prune to the top 20 taxa
-prune_top_taxa <- function(ps, n = 20) {
-  top_taxa <- names(sort(taxa_sums(ps), decreasing = TRUE))[1:n]
-  ps.top <- prune_taxa(top_taxa, ps)
-  return(ps.top)
-}
-
-# Function to save plots in multiple formats
-save_plot <- function(plot, filename) {
-  ggsave(paste0(filename, ".pdf"), plot, width = 8, height = 6)
-  ggsave(paste0(filename, ".png"), plot, width = 8, height = 6)
-}
-
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 ##                        Plotting of the data
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Generate and save barplots for all taxa and top 20 taxa
-for (tax_level in c("Phylum", "Family", "Genus")) {
-  
-  # ----- All Taxa -----
-  # By Subject
-  p_subject_all <- plot_bar(ps.percent, x = "Subject", fill = tax_level) +
-    facet_wrap(~When, scales = "free_x") +
-    labs(title = paste("Relative Abundance by Subject (All Taxa) -", tax_level),
-         y = "Percentage (%)",
-         x = "Subject")
-  save_plot(p_subject_all, paste0("Subject_All_", tax_level))
-  
-  # By Sampletype
-  ps.Sampletype_all <- aggregate_by_Sampletype(ps.percent, tax_level)
-  p_Sampletype_all <- ggplot(ps.Sampletype_all, aes(x = Sampletype, y = Percentage, fill = !!sym(tax_level))) +
-    geom_bar(stat = "identity", position = "stack") +
-    labs(title = paste("Relative Abundance by Sampletype (All Taxa) -", tax_level),
-         y = "Percentage (%)",
-         x = "Sampletype") +
-    theme_minimal()
-  save_plot(p_Sampletype_all, paste0("Sampletype_All_", tax_level))
-  
-  # ----- Top 20 Taxa -----
-  ps.top20 <- prune_top_taxa(ps.percent, 20)
-  
-  # By Subject
-  p_subject_top20 <- plot_bar(ps.top20, x = "Subject", fill = tax_level) +
-    facet_wrap(~When, scales = "free_x") +
-    labs(title = paste("Relative Abundance by Subject (Top 20 Taxa) -", tax_level),
-         y = "Percentage (%)",
-         x = "Subject")
-  save_plot(p_subject_top20, paste0("Subject_Top20_", tax_level))
-  
-  # By Sampletype
-  ps.Sampletype_top20 <- aggregate_by_Sampletype(ps.top20, tax_level)
-  p_Sampletype_top20 <- ggplot(ps.Sampletype_top20, aes(x = Sampletype, y = Percentage, fill = !!sym(tax_level))) +
-    geom_bar(stat = "identity", position = "stack") +
-    labs(title = paste("Relative Abundance by Sampletype (Top 20 Taxa) -", tax_level),
-         y = "Percentage (%)",
-         x = "Sampletype") +
-    theme_minimal()
-  save_plot(p_Sampletype_top20, paste0("Sampletype_Top20_", tax_level))
-}
+# Select the top 20 sequences by the sum of taxa and normalize the counts
 
-# Print confirmation
-message("Barplots for all taxa and top 20 taxa saved as both PDF and PNG files.")
+
+top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
+ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+ps.top20 <- prune_taxa(top20, ps.top20)
+
+pdf(file="Subject_Phylum_Top20.pdf")
+plot_bar(ps.top20, x="Sample", fill="Phylum") + facet_wrap(~Sampletype, scales="free_x")
+dev.off()
+
+pdf(file="Subject_Family_Top20.pdf")
+plot_bar(ps.top20, x="Sample", fill="Family") + facet_wrap(~Sampletype, scales="free_x")
+dev.off()
+
+pdf(file="Subject_Genus_Top20.pdf")
+plot_bar(ps.top20, x="Sample", fill="Genus") + facet_wrap(~Sampletype, scales="free_x")
+dev.off()
+
+
+# Merge samples by Sampletype and set the factor levels
+mergedPs <- merge_samples(ps, "Sampletype")
+sample_data(mergedPs)$Sampletype <- factor(
+  c("Plaque", "Saliva"),
+  levels = c("Plaque", "Saliva")
+)
+write.csv(mergedPs@otu_table,"./mergedOTU.csv", row.names = TRUE)
+
+# Transform OTU counts to percentages
+mergedPs_percent <- transform_sample_counts(mergedPs, function(x) (x / sum(x)) * 100)
+sample_data(mergedPs_percent)$Sampletype <- factor(
+  c("Plaque", "Saliva"),
+  levels = c("Plaque", "Saliva")
+)
+write.csv(as.data.frame(otu_table(mergedPs_percent)), "./mergedOTU_percentages.csv", row.names = TRUE)
+
+
+pdf(file = "Sampletype_Phylum_Compact.pdf")
+plot_bar(mergedPs_percent, x = "Sampletype", fill = "Phylum") +
+  facet_wrap(~Sampletype, scales = "free_x") +
+  theme(legend.position = "right",
+        legend.key.size = unit(0.5, "cm"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 10)) + 
+  guides(fill = guide_legend(ncol = 1))    
+dev.off()
+
+
+pdf(file = "Sampletype_Genus_Compact.pdf")
+plot_bar(mergedPs_percent, x = "Sampletype", fill = "Genus") +
+  facet_wrap(~Sampletype, scales = "free_x") +
+  theme(legend.position = "right",
+        legend.key.size = unit(0.3, "cm"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 10)) +
+  guides(fill = guide_legend(ncol = 2))
+dev.off()
+
+
+pdf(file = "Sampletype_Family_Compact.pdf")
+plot_bar(mergedPs_percent, x = "Sampletype", fill = "Family") +
+  facet_wrap(~Sampletype, scales = "free_x") +
+  theme(legend.position = "right",
+        legend.key.size = unit(0.5, "cm"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 10)) +
+  guides(fill = guide_legend(ncol = 2))
+dev.off()
