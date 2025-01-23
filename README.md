@@ -5,6 +5,8 @@ This is commonly achieved using universal primers to generate amplicons from bul
 Sequencing is performed on these amplicons and then bioinformatics tools such as QIIME and DADA2 are used to match the sequence of these amplicons to known taxa of microorganisms. 
 Phylogenetics tools such as Phyloseq can then be used to compare the taxonomic classification of the microbiome between samples and groups of samples.
 
+More powerful techniques such as shotgun Metagenomics allow identification of novel organisms, as well as providing more information about their genomics. Scripts for this will be added soon. 
+
 ---
 
 ## Table of Contents
